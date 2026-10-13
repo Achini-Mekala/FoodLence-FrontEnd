@@ -2,7 +2,7 @@
 
 This repository contains the **Flutter Android client** of FoodLence. The app scans a packaged-food ingredient label with the phone camera, extracts the text on-device with Google ML Kit, and sends it to the FoodLence cloud backend, which identifies the ingredients, maps them to allergens and additives, and returns a personalised, colour-coded safety result.
 
-> Backend, ML model and database live in a separate repository: **[foodlence-backend](https://github.com/<org>/foodlence-backend)** (replace with the real link).
+> Backend, ML model and database live in a separate repository: **[foodlence-backend]([https://github.com/<org>/foodlence-backend](https://github.com/dilshandevxx/FoodLence-Backend))**.
 
 ---
 
