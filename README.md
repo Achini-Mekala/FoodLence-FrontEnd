@@ -1,329 +1,225 @@
-# FoodLence - AI-Based Food Label Scanner
+# FoodLence Mobile - AI-Based Food Label Scanner (Frontend)
 
-FoodLence is an offline-first mobile application combining Optical Character Recognition (OCR) and Artificial Intelligence to scan physical food ingredient labels, identify potential allergens and chemical additives, and deliver instant, personalized dietary safety reports.
+This repository contains the **Flutter Android client** of FoodLence. The app scans a packaged-food ingredient label with the phone camera, extracts the text on-device with Google ML Kit, and sends it to the FoodLence cloud backend, which identifies the ingredients, maps them to allergens and additives, and returns a personalised, colour-coded safety result.
+
+> Backend, ML model and database live in a separate repository: **[foodlence-backend]([https://github.com/dilshandevxx/FoodLence-Backend])**.
 
 ---
 
 ## Table of Contents
 - [Project Overview](#project-overview)
 - [Key Features](#key-features)
-- [System Architecture](#system-architecture)
+- [How the App Works](#how-the-app-works)
 - [Tech Stack](#tech-stack)
 - [Repository Structure](#repository-structure)
-- [New Member Onboarding & Getting Started](#new-member-onboarding--getting-started)
-  - [1. Prerequisites](#1-prerequisites)
-  - [2. Clone the Repository](#2-clone-the-repository)
-  - [3. Pre-Development Health Checks (Run Before Coding!)](#3-pre-development-health-checks-run-before-coding)
-  - [4. Backend API Connectivity & Setup](#4-backend-api-connectivity--setup)
-  - [5. Running the Application](#5-running-the-application)
-- [Team Details & Module Ownership](#team-details--module-ownership)
-- [Supervision & Mentorship](#supervision--mentorship)
-- [Development Workflow & Git Guidelines](#development-workflow--git-guidelines)
-  - [Branching Protocol](#branching-protocol)
-  - [Pre-Commit & Testing Checklist](#pre-commit--testing-checklist)
-  - [Pull Request (PR) Submission](#pull-request-pr-submission)
-- [Testing & Quality Assurance](#testing--quality-assurance)
+- [Getting Started](#getting-started)
+- [Backend API Used by the App](#backend-api-used-by-the-app)
+- [Team and Module Ownership](#team-and-module-ownership)
+- [Supervision and Mentorship](#supervision-and-mentorship)
+- [Development Workflow and Git Guidelines](#development-workflow-and-git-guidelines)
+- [Testing and Quality Assurance](#testing-and-quality-assurance)
 - [Disclaimer](#disclaimer)
 
 ---
 
 ## Project Overview
 
-Reading modern packaged food labels is challenging due to scientific nomenclature, alternative names, and chemical codes (such as E-numbers and INS numbers). Standard barcode scanning applications rely on centralized international databases that frequently lack coverage for local, regional, or unlisted bakery products.
+Packaged food labels are hard to read: scientific names, alternative terms and codes such as E-numbers hide allergens (for example, casein, whey and E322). Barcode apps only work for products already in their database, which excludes many local Sri Lankan and unlisted products.
 
-FoodLence solves this problem by directly analyzing the printed text on packaging using on-device OCR, processing ingredient relationships with Natural Language Processing (NLP), and cross-referencing findings against personalized user health profiles.
+FoodLence reads the **printed label itself**, so it works for any product. This repository is the mobile client in a **thin-client, thick-server** design:
+
+- The app handles the camera, image preprocessing, on-device OCR and the user interface.
+- The backend handles NLP classification, the allergen and additive knowledge base, profile evaluation and scan logging.
+- The app holds **no allergen or food-chemistry knowledge**, so the model and database can improve without an app update.
+
+An active internet connection is required for analysis. Offline AI processing is out of scope.
 
 ---
 
 ## Key Features
 
-* **Direct Label OCR Scanning**: Extracts ingredient text directly from physical packaging using Google ML Kit and Tesseract OCR without requiring barcodes.
-* **Semantic AI Understanding**: Understands ingredient synonyms, scientific terms, and E/INS codes (e.g., mapping whey, casein, and E322 to their respective allergen categories).
-* **Personal & Family Multi-Profile Checking**: Enables users to configure multiple dietary profiles and evaluate product safety across family members from a single scan.
-* **Additive & Chemical Education**: Identifies preservatives, artificial colors, emulsifiers, stabilizers, and sweeteners with plain-language explanations.
-* **Side-by-Side Product Comparison**: Compare two scanned food items side-by-side to determine which product contains fewer additives or allergens.
-* **Offline-First Functionality**: On-device OCR processing and a curated SQLite knowledge base ensure core functionality works in low-connectivity retail environments.
-* **Confidence Scoring & Verification**: Transparently rates extraction and matching certainty to alert users when label conditions require manual verification.
-* **Manual Ingredient Search & Education**: Allows users to search ingredients manually to view detailed descriptions, purposes, and allergen affiliations.
+* **Label scanner:** camera screen with focus guide, flash toggle and capture/retake.
+* **On-device OCR:** Google ML Kit text recognition after grayscale, contrast and noise preprocessing.
+* **Colour-coded results:** SAFE (green), CAUTION (yellow) and UNSAFE (red) banner with a per-ingredient breakdown.
+* **Additive education:** tap an ingredient card to read a plain-language explanation of additives, preservatives and E-numbers.
+* **Multi-profile support:** up to five dietary profiles per account. Switch profile and re-evaluate the same scan without scanning again.
+* **Low-confidence warning:** when the model is unsure (below 75% confidence), the app asks the user to check the physical label.
+* **Scan history:** past results stored on the server and cached on the device for quick reference.
+* **Manual text search fallback:** type or paste ingredient text if scanning fails.
+* **Onboarding and medical disclaimer:** shown before first use and must be accepted.
+* **Safe failure handling:** loading, timeout and no-internet states, so the app never crashes when the network drops.
 
 ---
 
-## System Architecture
+## How the App Works
 
-FoodLence follows a modular, layered architecture designed for local on-device execution with optional cloud synchronization:
+```
+Camera capture
+   -> Image preprocessing (grayscale, contrast, noise reduction)
+   -> Google ML Kit OCR (raw text, on-device)
+   -> POST /api/v1/analyze  { ocr_text, profile_id }   (HTTPS, JWT)
+   -> Backend: segment -> classify -> allergen engine -> evaluate vs profile
+   <- JSON safety report
+   -> Result dashboard (SAFE / CAUTION / UNSAFE, ingredient cards, confidence)
+   -> Saved to scan history
+```
 
-1. Camera & Image Preprocessor (Grayscale, Contrast Adjustment, Noise Filtering)
-2. On-Device OCR Engine (Google ML Kit / Tesseract OCR)
-3. Text Cleaning & Regex Parsing (Isolates ingredients from packaging text)
-4. AI / NLP Matching Engine (spaCy, scikit-learn, RapidFuzz) <-> Embedded SQLite Knowledge Base
-5. Allergen Detection Engine <-> User Profiles Database
-6. Result Display Dashboard (Color-coded Safe / Caution / Warning Alerts)
-7. Local Scan History Archive (SQLite)
+The OCR text stays on the device after a scan, so switching profiles only sends the same text again with a different `profile_id`.
 
 ---
 
 ## Tech Stack
 
-### Mobile Client
-* Framework: Flutter (Dart)
-* Local Database: SQLite (sqflite)
-* State Management: Provider / Riverpod
-* OCR Engines: Google ML Kit Flutter Plugin & Tesseract OCR
-* UI Design: Flutter Material Design Widgets
+| Area | Technology |
+| :--- | :--- |
+| Framework | Flutter (Dart), Android 8.0+ |
+| OCR | `google_mlkit_text_recognition` |
+| Camera | `camera` plugin |
+| Image preprocessing | `image` package |
+| Networking | `dio` (REST/JSON over HTTPS) |
+| State management | Riverpod (or Provider; keep one across the app) |
+| Auth storage | `flutter_secure_storage` (JWT access and refresh tokens) |
+| Local cache | `sqflite` (scan history cache) / `shared_preferences` (settings) |
+| Design | Figma, Flutter Material widgets |
+| CI | GitHub Actions (`flutter analyze`, `flutter test`) |
 
-### Backend & AI Processing
-* Backend Framework: Python FastAPI
-* NLP & AI Libraries: spaCy, scikit-learn, RapidFuzz / FuzzyWuzzy
-* Cloud Database: PostgreSQL
-* Authentication: JWT (JSON Web Tokens) with bcrypt password hashing
-* DevOps & Containerization: Docker, Docker Compose, GitHub Actions
-* Cloud Hosting: Render / Railway
+> These are the intended defaults. Adjust the list if the team picks different packages.
+
+---
 
 ## Repository Structure
 
 ```text
-ai-food-label-scanner/
-├── mobile/                  # Flutter application source code
-│   ├── lib/
-│   │   ├── models/          # Data models
-│   │   ├── services/        # OCR, SQLite, and API services
-│   │   ├── views/           # Screens and UI widgets
-│   │   └── main.dart        # Application entry point
-│   ├── assets/              # Icons, seed database
-│   └── pubspec.yaml
-├── backend/                 # Python FastAPI backend & AI engine
-│   ├── app/
-│   │   ├── api/             # REST API endpoints
-│   │   ├── core/            # Security and authentication
-│   │   ├── nlp/             # AI models and matching logic
-│   │   └── models/          # Database schemas
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── requirements.txt
-├── docs/                    # Architecture diagrams, wireframes, reports
-├── .gitignore
+foodlence-mobile/
+├── lib/
+│   ├── core/                # Theme, constants, routing, error handling
+│   ├── models/              # Data models (AnalysisResult, Profile, ScanRecord)
+│   ├── services/
+│   │   ├── ocr_service.dart       # ML Kit text recognition
+│   │   ├── image_preprocessor.dart
+│   │   ├── api_client.dart        # Dio client, JWT interceptor, mock switch
+│   │   └── history_cache.dart     # Local scan history
+│   ├── features/
+│   │   ├── onboarding/      # Welcome and medical disclaimer
+│   │   ├── auth/            # Login and register
+│   │   ├── scanner/         # Camera and capture
+│   │   ├── results/         # Colour-coded dashboard, ingredient cards
+│   │   ├── profiles/        # Profile list, editor, switcher
+│   │   ├── history/         # Scan history
+│   │   └── search/          # Manual text search fallback
+│   ├── widgets/             # Shared UI components
+│   └── main.dart
+├── assets/                  # Icons, images, fonts
+├── test/                    # Unit and widget tests
+├── integration_test/        # End-to-end tests against the API contract
+├── docs/                    # Wireframes, Figma exports, screenshots
+├── pubspec.yaml
 └── README.md
 ```
 
-## New Member Onboarding & Getting Started
-
-Welcome to the **FoodLence** engineering team! Follow this step-by-step checklist to set up your local development environment, verify baseline code health, and connect to the backend before writing any code.
-
 ---
 
-### 1. Prerequisites
-Ensure you have the following installed on your development machine:
-* **Flutter SDK**: `^3.19.0` or higher (Matching Dart SDK `^3.9.2`).
-* **Android Studio / Command-line Tools**: For Android SDK, platform tools, and emulator management.
-* **VS Code** (Recommended) or **Android Studio** with the following extensions:
-  * Flutter (`Dart-Code.flutter`)
-  * Dart (`Dart-Code.dart`)
-* **Git**: Installed and configured with your name and GitHub email (`git config --global user.name "Your Name"`).
-* **Target Device**: Either a configured Android Virtual Device (AVD Emulator) or a physical Android smartphone with **USB Debugging** enabled.
-* **Docker Desktop** (Optional, recommended for running local PostgreSQL & FastAPI backend).
+## Getting Started
 
-Verify your environment readiness by running:
+### Prerequisites
+* Flutter SDK (3.19 or newer) and Dart
+* Android Studio (emulator and SDK) or VS Code with the Flutter extension
+* Git
+* An Android phone (8.0+) with a rear camera of at least 8 MP, or an emulator. A real device is recommended for OCR testing.
+
+### Setup
 ```bash
-flutter doctor
-```
-*(All checks for Flutter, Android toolchain, and connected devices should pass or be resolved before proceeding).*
-
----
-
-### 2. Clone the Repository
-Clone the frontend repository to your local workspace:
-
-```bash
-# Clone the frontend repository
-git clone https://github.com/GKR21/FoodLence-FrontEnd.git
-
-# Navigate into the project folder
-cd FoodLence-FrontEnd
-```
-
-*(Optional: If your assigned task requires full-stack testing with the backend engine, also clone the backend repository alongside in your workspace folder):*
-```bash
-git clone https://github.com/dilshandevxx/FoodLence-Backend.git
-```
-
----
-
-### 3. Pre-Development Health Checks (Run Before Coding!)
-
-> [!IMPORTANT]
-> **Always run these commands immediately after cloning or pulling the latest changes from `main`**, and before writing any new code:
-
-#### Step 3.1: Clean Cache & Fetch Dependencies
-```bash
-flutter clean
+git clone https://github.com/<org>/foodlence-mobile.git
+cd foodlence-mobile
 flutter pub get
 ```
 
-#### Step 3.2: Run Static Code Analysis (Zero Warnings Policy)
-Ensure the repository currently compiles and complies with linter rules without any warnings or errors:
+### Run against the mock API (no backend needed)
+Used during early development, before the backend is deployed:
 ```bash
-flutter analyze
+flutter run --dart-define=USE_MOCK_API=true
 ```
-*Expected result: `No issues found!`*
 
-#### Step 3.3: Run Automated Widget & Unit Tests
-Verify that all existing tests pass on your machine:
+### Run against the backend
 ```bash
-flutter test
+flutter run --dart-define=API_BASE_URL=https://<your-backend-url>/api/v1
 ```
-*Expected result: `All tests passed!`*
+For a locally running backend on an Android emulator, use `http://10.0.2.2:8000/api/v1`.
 
-#### Step 3.4: Auto-Format Dart Code
-Keep code compliant with Dart's official style guide:
+### Build a release APK
 ```bash
-dart format .
+flutter build apk --release --dart-define=API_BASE_URL=https://<your-backend-url>/api/v1
 ```
+The APK is created at `build/app/outputs/flutter-apk/app-release.apk`.
+
+> Never commit secrets, keystores or `.env` files. Keep signing keys outside the repository.
 
 ---
 
-### 4. Backend API Connectivity & Setup
+## Backend API Used by the App
 
-The FoodLence frontend integrates with a Python FastAPI backend (Port `8000`). If your feature interacts with API endpoints or backend diagnostics:
+The full contract is maintained in the backend repository. The app uses:
 
-#### Understanding IP Addresses Across Devices:
-| Testing Device | Backend API Base URL | Why? |
+| Method | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| **Android Emulator** | `http://10.0.2.2:8000` | The Android emulator runs in its own virtual network. `10.0.2.2` bridges directly to your development PC's `localhost`. |
-| **Physical Phone (USB/Wi-Fi)** | `http://<YOUR_PC_IP>:8000` | Use your computer's local Wi-Fi IPv4 address (e.g. `http://192.168.1.50:8000`). Phone and PC must be on the same Wi-Fi. |
-| **Windows Desktop / Chrome Web** | `http://localhost:8000` | Direct local machine loopback. |
+| POST | `/auth/register`, `/auth/login`, `/auth/refresh` | Account and tokens |
+| GET | `/profiles` | List the user's profiles |
+| POST / PUT / DELETE | `/profiles`, `/profiles/{id}` | Manage profiles (max 5) |
+| GET | `/allergens` | Allergen list for the profile editor |
+| POST | `/analyze` | Send OCR text and `profile_id`, receive the safety report |
+| GET | `/history` | Paginated scan history |
+| GET | `/health` | Backend health check |
 
-#### Starting the Local Backend:
-* **Option A: Using Docker (Fastest)**
-  ```bash
-  cd ../FoodLence-BackEnd
-  docker-compose up -d
-  ```
-* **Option B: Using Python Virtual Environment**
-  ```bash
-  cd ../FoodLence-BackEnd
-  python -m venv venv
-  # Activate virtual environment:
-  .\venv\Scripts\activate      # On Windows
-  source venv/bin/activate       # On Mac/Linux
-
-  pip install -r requirements.txt
-  uvicorn app.main:app --reload
-  ```
-* Confirm backend is running: Open `http://localhost:8000/docs` in your browser, or verify on the mobile app's **Backend** tab ([BackendStatusScreen](lib/main.dart)).
+All requests use HTTPS (TLS 1.2+) and `Authorization: Bearer <token>` except the auth routes. The `overall_status` values are `SAFE`, `CAUTION` and `UNSAFE`.
 
 ---
 
-### 5. Running the Application
+## Team and Module Ownership
 
-1. Check your connected devices:
-   ```bash
-   flutter devices
-   ```
-2. Start the app on your selected emulator or physical device:
-   ```bash
-   flutter run
-   ```
-3. Test initial navigation across the bottom navigation bar:
-   * **Scanner**: Live OCR extraction simulation.
-   * **Compare**: Product comparison view.
-   * **Profiles**: User and household allergy profiles.
-   * **Backend**: Real-time service connectivity diagnostics.
+This repository is owned by the **Mobile and UI lead**. The other members contribute through the backend repository.
+
+| Name | Index No | Role | Main modules |
+| :--- | :--- | :--- | :--- |
+| **H.G.B.A Mekala** | `22CSE0361` | **Mobile & UI Lead** (this repo) | Flutter app, scanner, OCR integration, results dashboard, profiles UI, history, APK |
+| **H.G.K Rashmika** | `21CSE0190` | ML Dataset & Training Lead | Dataset, noise augmentation, NLP classifier |
+| **S.K.P.H. Deemantha** | `22CSE0348` | Knowledge Base, Allergen Engine & QA Lead | Database, allergen engine, profile logic, testing, UAT |
+| **P.A.A. Ishara Dilshan** | `22CSE0360` | Backend & Deployment Lead | FastAPI, authentication, deployment, load testing |
 
 ---
 
-## Team Details & Module Ownership
+## Supervision and Mentorship
 
-| Name | Index / Reg No | Role & Module Ownership |
-| :--- | :--- | :--- |
-| **H.G.B.A Mekala** | `22CSE0361` | **Mobile & UI Lead**: Mobile App UI, Scanner Interface, Analysis Dashboard, Scan History, Favorites |
-| **H.G.K Rashmika** | `21CSE0190` | **AI & Semantic Engine Lead**: AI Engine, Semantic Matching, Ingredient Classification, AI Explanations, Confidence Scoring |
-| **S.K.P.H. Deemantha** | `22CSE0348` | **Knowledge Base & Detection Lead**: Knowledge Base Schema, Allergen/Additive Detection, E-Number Mapping, Product Comparison |
-| **P.A.A. Ishara Dilshan** | `22CSE0360` | **Platform, OCR & Profile Lead**: User & Family Profiles, Personalized Warning Engine, OCR Pipeline, Multilingual Support, Dockerized Services |
+* Institution: Department of Software Engineering, Faculty of Computing, Sabaragamuwa University of Sri Lanka
+* Course unit: SE5104 Mini Project (Group 14)
+* Internal supervisor: Ms. B.R. Madhurangi (Lecturer)
+* Industry mentor: Mr. G.A.C.G. Dhanawardhana (Software Engineer)
 
 ---
 
-## Supervision & Mentorship
+## Development Workflow and Git Guidelines
 
-* Academic Institution: Department of Software Engineering, Faculty of Computing, Sabaragamuwa University of Sri Lanka
-* Course Unit: SE5104 Mini Project
-* Internal Supervisor: Ms. B.R. Madhurangi (Lecturer)
-* Industry Mentor: Mr. G.A.C.G. Dhanawardhana (Associate Software Engineer, Surecore (Pvt) Ltd)
+The project follows **GitHub Flow**:
 
----
-
-## Development Workflow & Git Guidelines
-
-This project strictly adheres to the **GitHub Flow** branching model. Every team member must follow these rules:
-
-> [!CAUTION]
-> **Direct pushes to `main` are strictly prohibited!** Any change must go through a dedicated feature branch and Pull Request (PR).
-
-### Branching Protocol
-
-1. **Sync with Remote Main**:
-   Always branch off an up-to-date `main`:
-   ```bash
-   git checkout main
-   git pull origin main
-   ```
-
-2. **Create Your Feature Branch**:
-   Name your branch descriptively using your name or index and module task:
-   `feature/<name>-<feature-description>` or `fix/<name>-<issue>`
-   ```bash
-   # Examples based on module ownership:
-   git checkout -b feature/mekala-scanner-camera-feed
-   git checkout -b feature/rashmika-ai-confidence-badge
-   git checkout -b feature/deemantha-comparison-ui
-   git checkout -b feature/dilshan-allergy-profile-editor
-   ```
-
-### Pre-Commit & Testing Checklist
-
-Before committing any code, you **MUST** run:
-```bash
-# 1. Format all modified files
-dart format .
-
-# 2. Verify static analysis has 0 warnings
-flutter analyze
-
-# 3. Ensure all tests still pass
-flutter test
-```
-Do **not** commit code that fails `flutter analyze` or breaks existing test suites.
-
-### Pull Request (PR) Submission
-
-1. **Commit with Conventional Messages**:
-   Make small, readable, and individually identifiable commits:
-   ```bash
-   git add .
-   git commit -m "feat(scanner): implement camera preview widget with overlay guidelines"
-   ```
-
-2. **Push Branch to Origin**:
-   ```bash
-   git push -u origin feature/<your-branch-name>
-   ```
-
-3. **Open a GitHub Pull Request**:
-   * Navigate to the [FoodLence-FrontEnd Pull Requests](https://github.com/GKR21/FoodLence-FrontEnd/pulls) tab on GitHub.
-   * Open a PR targeting `main`.
-   * Add a clear summary of changes, linked issues, and screenshots/recordings for UI updates.
-   * Request review from the relevant module lead before merging.
+* `main` always holds working, reviewable code. Do not push directly to it.
+* Create a branch per Jira ticket, for example `feature/flutter-camera-scanner` or `fix/ocr-timeout-handling`.
+* Commit often with clear messages that mention the Jira key, for example `FL-50: add flash toggle to camera screen`.
+* Open a Pull Request into `main`. It needs **at least one approval** and passing CI (`flutter analyze` and `flutter test`).
+* Every member commits from their own identifiable GitHub account throughout the project. A single bulk upload at the end is not accepted.
+* Tasks are tracked in the team's Jira board (space key `FL`), organised into three two-week sprints.
 
 ---
 
-## Testing & Quality Assurance
+## Testing and Quality Assurance
 
-* **Unit Testing**: Dart unit/widget tests for the mobile app and pytest for Python backend modules.
-* **OCR Testing**: Accuracy benchmarked across 100 real packaging samples (target: >= 85% clear, >= 70% curved/reflective).
-* **AI Matching Evaluation**: Precision, recall, and F1 score measured against a 200-ingredient test dataset.
-* **User Acceptance Testing (UAT)**: Validated with real volunteers managing dietary restrictions.
+* **Unit and widget tests:** `flutter test` covers state management, profile switching and the preprocessing helpers.
+* **Integration tests:** `flutter test integration_test` validates the app against the API contract, using the mock API first and the deployed backend later.
+* **OCR accuracy:** measured on real packaging samples under different lighting. Target: at least 85% character accuracy on clear labels.
+* **Performance:** the request-to-result time shown in the app should stay under 3 seconds on a 4G connection.
+* **Static analysis:** `flutter analyze` must pass before merging.
+* **User Acceptance Testing:** at least five volunteers (people with food allergies or parents managing them) test the app in real shopping conditions, with feedback collected through a questionnaire.
 
 ---
 
 ## Disclaimer
 
-FoodLence is designed as an informational decision-support tool and is not a certified medical diagnostic device. OCR accuracy and automated ingredient mappings may vary based on label packaging and lighting conditions. Users should always inspect physical packaging directly and consult qualified healthcare professionals for medical dietary advice.
+FoodLence is an informational decision-support tool and not a certified medical device. OCR and automated ingredient classification can make mistakes, and manufacturers may change recipes or have cross-contamination without updating the packaging. Always read the physical label, and consult a qualified healthcare professional for medical dietary advice. People with severe allergies should carry their prescribed emergency medication.
